@@ -86,6 +86,13 @@ static uint32_t fgc, bgc, ugc;
 static uint32_t dfgc, dbgc;
 static area_stack_t astack;
 
+#define MAX_BUTTON_CMD 5
+#define MAX_BUTTON_CMD_LENGTH 256
+// +1 to make it 1-5, not 0-4
+static char button_cmd[MAX_BUTTON_CMD+1][MAX_BUTTON_CMD_LENGTH];
+static char button4_cmd[256];
+static char button5_cmd[256];
+
 void
 update_gc (void)
 {
@@ -1051,6 +1058,39 @@ parse_font_list (char *str)
     }
 }
 
+void
+parse_button_cmds(char* str)
+{
+    char *tok;
+    int button;
+
+    if (!str)
+        return;
+
+    tok = strtok(str, ";");
+
+    while(tok)
+    {
+        button = strtoul(tok, NULL, 10);
+
+        if(button < 1 || button > 5)
+        {
+            fprintf(stderr, "Invalid button %d\n", button);
+        }
+        else
+        {
+            tok++;
+            if(*tok == '=')
+            {
+                tok++;
+
+                strncpy(button_cmd[button], tok, strlen(tok));
+            }
+        }
+        tok = strtok(NULL, ";");
+    }
+}
+
 int
 main (int argc, char **argv)
 {
@@ -1080,10 +1120,10 @@ main (int argc, char **argv)
     ugc = fgc;
 
     char ch;
-    while ((ch = getopt(argc, argv, "hg:bdf:a:pu:B:F:")) != -1) {
+    while ((ch = getopt(argc, argv, "hg:bdf:a:pu:B:F:e:")) != -1) {
         switch (ch) {
             case 'h':
-                printf ("usage: %s [-h | -g | -b | -d | -f | -a | -p | -u | -B | -F]\n"
+                printf ("usage: %s [-h | -g | -b | -d | -f | -a | -p | -u | -B | -F | -e]\n"
                         "\t-h Show this help\n"
                         "\t-g Set the bar geometry {width}x{height}+{xoffset}+{yoffset}\n"
                         "\t-b Put bar at the bottom of the screen\n"
@@ -1092,7 +1132,8 @@ main (int argc, char **argv)
                         "\t-p Don't close after the data ends\n"
                         "\t-u Set the underline/overline height in pixels\n"
                         "\t-B Set background color in #AARRGGBB\n"
-                        "\t-F Set foreground color in #AARRGGBB\n", argv[0]);
+                        "\t-F Set foreground color in #AARRGGBB\n"
+                        "\t-e Execute commands on buttons (like dzen2)\n", argv[0]);
                 exit (EXIT_SUCCESS);
             case 'g': (void)parse_geometry_string(optarg, geom_v); break;
             case 'p': permanent = true; break;
@@ -1102,6 +1143,7 @@ main (int argc, char **argv)
             case 'u': bu = strtoul(optarg, NULL, 10); break;
             case 'B': dbgc = bgc = parse_color(optarg, NULL, scr->black_pixel); break;
             case 'F': dfgc = fgc = parse_color(optarg, NULL, scr->white_pixel); break;
+            case 'e': parse_button_cmds(optarg); break;
         }
     }
 
@@ -1143,6 +1185,13 @@ main (int argc, char **argv)
                         case XCB_BUTTON_PRESS:
                             press_ev = (xcb_button_press_event_t *)ev;
                             {
+                                // handle global buttons
+                                if(strlen(button_cmd[press_ev->detail]) > 0)
+                                {
+                                    write(STDOUT_FILENO, button_cmd[press_ev->detail], strlen(button_cmd[press_ev->detail]));
+                                    write(STDOUT_FILENO, "\n", 1);
+                                    // todo: decide whether to break here...
+                                }
                                 area_t *area = area_get(press_ev->event, press_ev->event_x);
                                 /* Respond to the click */
                                 if (area && area->button == press_ev->detail) {
